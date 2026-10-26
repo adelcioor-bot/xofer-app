@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Xofer Prof (Staging & Webhook)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "--dart-define=APP_ENV=staging",
+        "--dart-define=SUPABASE_URL=https://zfijlubukhzijrskwirx.supabase.co",
+        "--dart-define=SUPABASE_ANON_KEY=sb_publishable_9vo-_RZaF1kWyNAHyiv3nw_76-hsJkA",
+        "--dart-define=MAKE_PENALTY_WEBHOOK_URL=https://hook.make.com/penalidade"
+      ]
+    }
+  ]
+}

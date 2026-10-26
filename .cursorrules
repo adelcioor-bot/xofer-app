@@ -1,0 +1,20 @@
+# Xofer - Diretrizes de Desenvolvimento
+
+## Stack Tecnológica
+- **Frontend:** Flutter (Dart)
+- **Backend/Banco de Dados:** Supabase (Projeto: zfijlubukhzijrskwirx)
+- **Autenticação:** Vonage (OTP SMS flows)
+- **Internacionalização:** Suporte multilíngue ativado.
+
+## Design System & UI/UX
+- **Tema:** Obrigatório Modo Escuro (Dark Mode) nativo.
+- **Paleta de Cores:** Fundo em tons de Grafite (#121212 / #1E1E1E) e detalhes/destaques em Amarelo Âmbar (#FFC107).
+- **Filosofia:** Experiência de utilizador de "zero atrito", minimalista e focada em conversão rápida.
+
+## Arquitetura
+- Organização em camadas limpas (Features/Clean Architecture ou rotas modulares).
+- Utilização rigorosa de tratamento de erros e estados de carregamento (loading states).
+# Xofer - Diretrizes de Configuração e Chaves
+- **Vonage API Key:** Carregada via variável de ambiente `VONAGE_API_KEY`
+- **Vonage API Secret:** Carregada via variável de ambiente `VONAGE_API_SECRET`
+- **Regra de Segurança:** Nunca utilize as chaves diretamente no código Dart. Utilize sempre pacotes como `flutter_dotenv` para ler o arquivo `.env`.

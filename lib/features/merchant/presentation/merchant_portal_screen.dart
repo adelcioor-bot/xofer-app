@@ -940,10 +940,7 @@ class _RideCard extends StatelessWidget {
 }
 
 class _MerchantRideStages extends StatelessWidget {
-  const _MerchantRideStages({
-    required this.ride,
-    required this.activeColor,
-  });
+  const _MerchantRideStages({required this.ride, required this.activeColor});
 
   final MerchantRide ride;
   final Color activeColor;
@@ -993,8 +990,7 @@ class _MerchantRideStages extends StatelessWidget {
             complete:
                 !ride.isTerminalError &&
                 (index < currentIndex ||
-                    (ride.status == 'concluida' &&
-                        index < stages.length - 1)),
+                    (ride.status == 'concluida' && index < stages.length - 1)),
             color: activeColor,
           ),
       ],

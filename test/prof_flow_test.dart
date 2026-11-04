@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:xofer/features/auth/domain/auth_failure.dart';
 import 'package:xofer/features/auth/domain/auth_repository.dart';
@@ -7,6 +8,9 @@ import 'package:xofer/features/location/domain/location_failure.dart';
 import 'package:xofer/features/location/domain/location_repository.dart';
 import 'package:xofer/features/location/domain/user_location.dart';
 import 'package:xofer/prof/domain/document_capture.dart';
+import 'package:xofer/prof/domain/dispatch_attempt.dart';
+import 'package:xofer/prof/domain/dispatch_repository.dart';
+import 'package:xofer/prof/domain/nearby_call.dart';
 import 'package:xofer/prof/domain/partner_role.dart';
 import 'package:xofer/prof/domain/provider_account.dart';
 import 'package:xofer/prof/domain/provider_failure.dart';
@@ -99,6 +103,36 @@ class _Capture implements DocumentCapture {
   Future<CapturedDocument?> pick(DocumentSource source) async => null;
 }
 
+class _Dispatch implements DispatchRepository {
+  @override
+  Stream<DispatchAttempt> watchAttempts({
+    required String providerId,
+    required PartnerRole role,
+  }) => const Stream<DispatchAttempt>.empty();
+
+  @override
+  Future<MissionResponse> respondToMission({
+    required String attemptId,
+    required String providerId,
+    required String response,
+  }) async => MissionResponse(status: response);
+
+  @override
+  Future<NearbyCall> loadAcceptedRide(
+    String rideId, {
+    required PartnerRole role,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> updatePresence({
+    required PartnerRole role,
+    required LatLng? location,
+    required bool isAvailable,
+  }) async {}
+}
+
 void main() {
   testWidgets('a tela inicial oferece motorista e motoboy', (tester) async {
     await tester.pumpWidget(
@@ -115,7 +149,9 @@ void main() {
     expect(find.byKey(const Key('partner_phone_field')), findsNothing);
   });
 
-  testWidgets('sessão restaurada abre o radar sem novo OTP', (tester) async {
+  testWidgets('sessão restaurada abre despacho cego sem novo OTP', (
+    tester,
+  ) async {
     final providers = _Providers()
       ..current = ProviderAccount(
         id: 'user-1',
@@ -131,6 +167,7 @@ void main() {
       XoferProfApp(
         authRepository: _Auth(),
         providerRepository: providers,
+        dispatchRepository: _Dispatch(),
         locationRepository: _Location(),
         documentCapture: _Capture(),
         currentSession: _session(),
@@ -138,11 +175,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('radar_screen')), findsOneWidget);
+    expect(find.byKey(const Key('blind_dispatch_screen')), findsOneWidget);
+    expect(find.text('Aguardando nova missão'), findsOneWidget);
     expect(find.byKey(const Key('partner_phone_field')), findsNothing);
   });
 
-  testWidgets('o telefone de teste entra no radar se for parceiro ativo', (
+  testWidgets('o telefone de teste entra no despacho cego se ativo', (
     tester,
   ) async {
     final providers = _Providers();
@@ -150,6 +188,7 @@ void main() {
       XoferProfApp(
         authRepository: _Auth(),
         providerRepository: providers,
+        dispatchRepository: _Dispatch(),
         locationRepository: _Location(),
         documentCapture: _Capture(),
       ),
@@ -172,9 +211,8 @@ void main() {
     await tester.pump();
 
     expect(providers.ensured, isTrue);
-    expect(find.byKey(const Key('radar_screen')), findsOneWidget);
-    expect(find.text('Chamadas próximas'), findsOneWidget);
-    expect(find.byKey(const Key('calls_empty')), findsOneWidget);
+    expect(find.byKey(const Key('blind_dispatch_screen')), findsOneWidget);
+    expect(find.text('Aguardando nova missão'), findsOneWidget);
   });
 
   testWidgets('o celular do passageiro não abre o radar do motorista', (
@@ -185,6 +223,7 @@ void main() {
       XoferProfApp(
         authRepository: _Auth(),
         providerRepository: providers,
+        dispatchRepository: _Dispatch(),
         locationRepository: _Location(),
         documentCapture: _Capture(),
       ),
@@ -211,12 +250,13 @@ void main() {
     expect(find.byKey(const Key('radar_screen')), findsNothing);
   });
 
-  testWidgets('o celular do motoboy entra no radar', (tester) async {
+  testWidgets('o celular do motoboy entra no despacho cego', (tester) async {
     final providers = _Providers();
     await tester.pumpWidget(
       XoferProfApp(
         authRepository: _Auth(),
         providerRepository: providers,
+        dispatchRepository: _Dispatch(),
         locationRepository: _Location(),
         documentCapture: _Capture(),
       ),
@@ -239,45 +279,50 @@ void main() {
     await tester.pump();
 
     expect(providers.ensured, isTrue);
-    expect(find.byKey(const Key('radar_screen')), findsOneWidget);
+    expect(find.byKey(const Key('blind_dispatch_screen')), findsOneWidget);
+    expect(find.text('Área do resgatador'), findsOneWidget);
+    expect(find.text('Aguardando nova missão'), findsOneWidget);
+    expect(find.byKey(const Key('radar_screen')), findsNothing);
   });
 
-  testWidgets('motorista de teste abre o radar mesmo sem a tabela providers', (
-    tester,
-  ) async {
-    final providers = _Providers()
-      ..findError = const ProviderFailure(
-        '{"code":"PGRST205","message":"Could not find the table \'public.providers\' in the schema cache"}',
+  testWidgets(
+    'motorista de teste abre despacho cego mesmo sem a tabela providers',
+    (tester) async {
+      final providers = _Providers()
+        ..findError = const ProviderFailure(
+          '{"code":"PGRST205","message":"Could not find the table \'public.providers\' in the schema cache"}',
+        );
+
+      await tester.pumpWidget(
+        XoferProfApp(
+          authRepository: _Auth(),
+          providerRepository: providers,
+          dispatchRepository: _Dispatch(),
+          locationRepository: _Location(),
+          documentCapture: _Capture(),
+        ),
       );
 
-    await tester.pumpWidget(
-      XoferProfApp(
-        authRepository: _Auth(),
-        providerRepository: providers,
-        locationRepository: _Location(),
-        documentCapture: _Capture(),
-      ),
-    );
+      await tester.tap(find.byKey(const Key('role_driver')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('partner_phone_field')),
+        '4141004141',
+      );
+      await tester.tap(find.byKey(const Key('partner_send_otp')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('partner_otp_field')),
+        '123456',
+      );
+      await tester.tap(find.byKey(const Key('partner_verify_otp')));
+      await tester.pump();
+      await tester.pump();
 
-    await tester.tap(find.byKey(const Key('role_driver')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('partner_phone_field')),
-      '4141004141',
-    );
-    await tester.tap(find.byKey(const Key('partner_send_otp')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('partner_otp_field')),
-      '123456',
-    );
-    await tester.tap(find.byKey(const Key('partner_verify_otp')));
-    await tester.pump();
-    await tester.pump();
-
-    expect(find.byKey(const Key('radar_screen')), findsOneWidget);
-    expect(find.textContaining('PGRST205'), findsNothing);
-  });
+      expect(find.byKey(const Key('blind_dispatch_screen')), findsOneWidget);
+      expect(find.textContaining('PGRST205'), findsNothing);
+    },
+  );
 
   testWidgets('celular sem cadastro abre o formulário do parceiro', (
     tester,

@@ -8,9 +8,14 @@ import 'package:xofer/features/auth/domain/auth_repository.dart';
 import 'package:xofer/l10n/app_localizations.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.authRepository});
+  const LoginScreen({
+    super.key,
+    required this.authRepository,
+    this.simulateLocalOtp,
+  });
 
   final AuthRepository authRepository;
+  final bool? simulateLocalOtp;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -35,6 +40,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String get _countryCode => AppConfig.defaultCountryCode;
 
+  bool get _shouldSimulateLocalOtp =>
+      widget.simulateLocalOtp ?? AppConfig.shouldSimulateLocalOtp;
+
   Future<void> _sendOtp() async {
     final l10n = AppLocalizations.of(context);
     final phone = PhoneNumber.normalize(
@@ -54,6 +62,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await widget.authRepository.sendOtp(phone);
+      if (_shouldSimulateLocalOtp) {
+        await widget.authRepository.verifyOtp(
+          phoneNumber: phone,
+          code: AppConfig.localTestOtp,
+        );
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _otpSent = true;
@@ -167,7 +182,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         textInputAction: TextInputAction.done,
                         autofillHints: const [AutofillHints.telephoneNumber],
                         inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s]')),
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[0-9+\s]'),
+                          ),
                         ],
                         onFieldSubmitted: (_) {
                           if (!_isLoading) _sendOtp();

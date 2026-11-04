@@ -33,27 +33,50 @@ class SupabaseCorridaRepository implements CorridaRepository {
   }
 
   @override
-  Future<Corrida> requestRide({required NearbyCall call}) async {
+  Future<Corrida> requestRide({
+    required NearbyCall call,
+    String requesterType = 'customer',
+    String serviceType = 'rescue',
+  }) async {
     try {
-      final inserted = await _insertRow({
-        'call_id': call.id,
-        'status_corrida': RideStatus.buscandoPrestadores.wire,
-        'origin': call.origin,
-        'destination': call.destination,
-        'origin_lat': call.client.latitude,
-        'origin_lng': call.client.longitude,
-        'dest_lat': call.dropoff.latitude,
-        'dest_lng': call.dropoff.longitude,
-        'valor_total': call.driverFare,
-        'driver_fare': call.driverFare,
-        'requested_by': _userId,
-        'accepted_by': null,
-        'accepted_role': null,
-        'motoboy_id': null,
-        'encerrada': false,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      });
-      return Corrida.fromMap(inserted);
+      final quoteId = call.quoteId;
+      final amountCents = call.amountCents;
+      if (quoteId == null || amountCents == null || amountCents <= 0) {
+        throw const CorridaFailure(
+          'A cotação da corrida expirou ou está inválida. Solicite uma nova.',
+        );
+      }
+
+      if (requesterType != 'customer' && requesterType != 'merchant') {
+        throw const CorridaFailure('Tipo de solicitante inválido.');
+      }
+      if (serviceType != 'delivery' && serviceType != 'rescue') {
+        throw const CorridaFailure('Tipo de chamado inválido.');
+      }
+
+      final result = await _supabase.rpc(
+        requesterType == 'merchant'
+            ? 'rpc_create_merchant_ride_dispatch'
+            : 'rpc_create_customer_ride_dispatch',
+        params: {
+          'p_call_id': call.id,
+          'p_origin': call.origin,
+          'p_destination': call.destination,
+          'p_origin_lat': call.client.latitude,
+          'p_origin_lng': call.client.longitude,
+          'p_dest_lat': call.dropoff.latitude,
+          'p_dest_lng': call.dropoff.longitude,
+          'p_quote_id': quoteId,
+          'p_amount_cents': amountCents,
+          if (requesterType == 'merchant') 'p_service_type': serviceType,
+        },
+      );
+      if (result is! Map || result['ride'] is! Map) {
+        throw const CorridaFailure(
+          'O servidor não confirmou a criação da corrida e do despacho.',
+        );
+      }
+      return Corrida.fromMap(Map<String, dynamic>.from(result['ride'] as Map));
     } on CorridaFailure {
       rethrow;
     } on PostgrestException catch (error) {
@@ -401,22 +424,47 @@ class SupabaseCorridaRepository implements CorridaRepository {
   @override
   Future<Corrida> advance(String id, RideStatus status) async {
     try {
-      final updated = await _supabase
-          .from('corridas')
-          .update({
-            'status_corrida': status.wire,
-            'encerrada': status == RideStatus.concluida,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('id', id)
-          .select()
-          .single();
-      return Corrida.fromMap(updated);
+      final result = await _supabase.rpc(
+        'rpc_advance_ride_status',
+        params: {'p_ride_id': id, 'p_next_status': status.wire},
+      );
+      if (result is! Map) {
+        throw const CorridaFailure(
+          'O servidor não confirmou a atualização da corrida.',
+        );
+      }
+      return Corrida.fromMap(Map<String, dynamic>.from(result));
     } on CorridaFailure {
       rethrow;
     } on PostgrestException catch (error) {
       throw CorridaFailure.fromRemote(code: error.code, message: error.message);
     } catch (_) {
+      throw const CorridaFailure(CorridaFailure.syncMessage);
+    }
+  }
+
+  @override
+  Future<void> rateCompletedDriver({
+    required String rideId,
+    required int stars,
+  }) async {
+    try {
+      await _supabase.rpc(
+        'rpc_rate_completed_driver',
+        params: {'p_ride_id': rideId, 'p_stars': stars},
+      );
+    } on PostgrestException catch (error) {
+      throw CorridaFailure.fromRemote(
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'SupabaseCorridaRepository.rateCompletedDriver failed: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
       throw const CorridaFailure(CorridaFailure.syncMessage);
     }
   }

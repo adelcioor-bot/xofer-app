@@ -12,6 +12,8 @@ import 'package:xofer/features/location/domain/user_location.dart';
 import 'package:xofer/features/places/domain/place.dart';
 import 'package:xofer/features/places/domain/place_search_failure.dart';
 import 'package:xofer/features/places/domain/place_search_repository.dart';
+import 'package:xofer/features/ride/domain/ride_quote.dart';
+import 'package:xofer/features/ride/domain/ride_quote_repository.dart';
 import 'package:xofer/l10n/app_localizations.dart';
 
 class _FakeAuthRepository implements AuthRepository {
@@ -76,6 +78,21 @@ class _FakePlaceSearchRepository implements PlaceSearchRepository {
   }
 }
 
+class _FakeRideQuoteRepository implements RideQuoteRepository {
+  @override
+  Future<RideQuote> generate({
+    required Place origin,
+    required Place destination,
+    String requesterType = 'customer',
+  }) async {
+    return RideQuote(
+      id: 'quote-destination-test',
+      amountCents: 1875,
+      expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+    );
+  }
+}
+
 const _paulista = Place(
   id: '1',
   label: 'Avenida Paulista',
@@ -95,7 +112,10 @@ Widget _wrap(Widget child) {
 }
 
 Future<void> _searchFor(WidgetTester tester, String query) async {
-  await tester.enterText(find.byKey(const Key('destination_search_field')), query);
+  await tester.enterText(
+    find.byKey(const Key('destination_search_field')),
+    query,
+  );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
   await tester.pump();
@@ -112,6 +132,7 @@ void main() {
           authRepository: _FakeAuthRepository(),
           locationRepository: _FakeLocationRepository(),
           placeSearchRepository: places,
+          rideQuoteRepository: _FakeRideQuoteRepository(),
           mapController: mapController,
         ),
       ),
@@ -157,14 +178,14 @@ void main() {
     expect(find.byKey(const Key('destination_marker')), findsOneWidget);
 
     final route = tester.widget<PolylineLayer>(find.byType(PolylineLayer));
+    expect(route.polylines.single.points, const [
+      LatLng(-23.55, -46.63),
+      LatLng(-23.5614, -46.6558),
+    ]);
     expect(
-      route.polylines.single.points,
-      const [
-        LatLng(-23.55, -46.63),
-        LatLng(-23.5614, -46.6558),
-      ],
+      mapController.camera.center.latitude,
+      isNot(HomeScreen.fallbackCenter.latitude),
     );
-    expect(mapController.camera.center.latitude, isNot(HomeScreen.fallbackCenter.latitude));
   });
 
   testWidgets('não busca com menos de 3 caracteres', (tester) async {

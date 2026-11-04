@@ -4,13 +4,14 @@ import 'package:xofer/features/auth/data/test_phone_login.dart';
 import 'package:xofer/features/auth/domain/auth_repository.dart';
 import 'package:xofer/features/location/domain/location_repository.dart';
 import 'package:xofer/prof/domain/corrida_repository.dart';
+import 'package:xofer/prof/domain/dispatch_repository.dart';
 import 'package:xofer/prof/domain/document_capture.dart';
 import 'package:xofer/prof/domain/partner_role.dart';
 import 'package:xofer/prof/domain/provider_account.dart';
 import 'package:xofer/prof/domain/provider_failure.dart';
 import 'package:xofer/prof/domain/provider_repository.dart';
+import 'package:xofer/prof/presentation/blind_dispatch_screen.dart';
 import 'package:xofer/prof/presentation/partner_auth_screen.dart';
-import 'package:xofer/prof/presentation/radar_screen.dart';
 import 'package:xofer/prof/presentation/registration_screen.dart';
 
 class PartnerFlow extends StatefulWidget {
@@ -20,6 +21,7 @@ class PartnerFlow extends StatefulWidget {
     required this.authRepository,
     required this.providerRepository,
     this.corridaRepository,
+    this.dispatchRepository,
     required this.locationRepository,
     required this.documentCapture,
     this.initialPhone,
@@ -30,6 +32,7 @@ class PartnerFlow extends StatefulWidget {
   final AuthRepository authRepository;
   final ProviderRepository providerRepository;
   final CorridaRepository? corridaRepository;
+  final DispatchRepository? dispatchRepository;
   final LocationRepository locationRepository;
   final DocumentCapture documentCapture;
   final String? initialPhone;
@@ -192,12 +195,12 @@ class _PartnerFlowState extends State<PartnerFlow> {
     }
 
     if (account.canReceiveCalls) {
-      return RadarScreen(
+      return BlindDispatchScreen(
         role: widget.role,
+        partnerId: account.id,
         locationRepository: widget.locationRepository,
         corridaRepository: widget.corridaRepository,
-        partnerId: account.id,
-        partnerName: account.fullName,
+        dispatchRepository: widget.dispatchRepository,
         documentCapture: widget.documentCapture,
         onSignOut: _signOut,
       );

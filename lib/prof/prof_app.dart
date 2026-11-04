@@ -5,6 +5,7 @@ import 'package:xofer/features/auth/domain/auth_repository.dart';
 import 'package:xofer/features/location/domain/location_repository.dart';
 import 'package:xofer/l10n/app_localizations.dart';
 import 'package:xofer/prof/domain/corrida_repository.dart';
+import 'package:xofer/prof/domain/dispatch_repository.dart';
 import 'package:xofer/prof/domain/document_capture.dart';
 import 'package:xofer/prof/domain/partner_role.dart';
 import 'package:xofer/prof/domain/provider_repository.dart';
@@ -17,6 +18,7 @@ class XoferProfApp extends StatelessWidget {
     required this.authRepository,
     required this.providerRepository,
     this.corridaRepository,
+    this.dispatchRepository,
     required this.locationRepository,
     required this.documentCapture,
     this.authStateStream,
@@ -26,6 +28,7 @@ class XoferProfApp extends StatelessWidget {
   final AuthRepository authRepository;
   final ProviderRepository providerRepository;
   final CorridaRepository? corridaRepository;
+  final DispatchRepository? dispatchRepository;
   final LocationRepository locationRepository;
   final DocumentCapture documentCapture;
   final Stream<AuthState>? authStateStream;
@@ -46,6 +49,7 @@ class XoferProfApp extends StatelessWidget {
         authRepository: authRepository,
         providerRepository: providerRepository,
         corridaRepository: corridaRepository,
+        dispatchRepository: dispatchRepository,
         locationRepository: locationRepository,
         documentCapture: documentCapture,
         authStateStream: authStateStream,
@@ -60,6 +64,7 @@ class _ProfAuthGate extends StatelessWidget {
     required this.authRepository,
     required this.providerRepository,
     required this.corridaRepository,
+    required this.dispatchRepository,
     required this.locationRepository,
     required this.documentCapture,
     this.authStateStream,
@@ -69,6 +74,7 @@ class _ProfAuthGate extends StatelessWidget {
   final AuthRepository authRepository;
   final ProviderRepository providerRepository;
   final CorridaRepository? corridaRepository;
+  final DispatchRepository? dispatchRepository;
   final LocationRepository locationRepository;
   final DocumentCapture documentCapture;
   final Stream<AuthState>? authStateStream;
@@ -103,6 +109,7 @@ class _ProfAuthGate extends StatelessWidget {
             authRepository: authRepository,
             providerRepository: providerRepository,
             corridaRepository: corridaRepository,
+            dispatchRepository: dispatchRepository,
             locationRepository: locationRepository,
             documentCapture: documentCapture,
           );
@@ -113,6 +120,7 @@ class _ProfAuthGate extends StatelessWidget {
           authRepository: authRepository,
           providerRepository: providerRepository,
           corridaRepository: corridaRepository,
+          dispatchRepository: dispatchRepository,
           locationRepository: locationRepository,
           documentCapture: documentCapture,
         );
@@ -127,6 +135,7 @@ class _AuthenticatedProfEntry extends StatelessWidget {
     required this.authRepository,
     required this.providerRepository,
     required this.corridaRepository,
+    required this.dispatchRepository,
     required this.locationRepository,
     required this.documentCapture,
   });
@@ -134,6 +143,7 @@ class _AuthenticatedProfEntry extends StatelessWidget {
   final AuthRepository authRepository;
   final ProviderRepository providerRepository;
   final CorridaRepository? corridaRepository;
+  final DispatchRepository? dispatchRepository;
   final LocationRepository locationRepository;
   final DocumentCapture documentCapture;
 
@@ -196,6 +206,7 @@ class _AuthenticatedProfEntry extends StatelessWidget {
             authRepository: authRepository,
             providerRepository: providerRepository,
             corridaRepository: corridaRepository,
+            dispatchRepository: dispatchRepository,
             locationRepository: locationRepository,
             documentCapture: documentCapture,
             initialPhone: authRepository.currentPhone,
@@ -207,6 +218,7 @@ class _AuthenticatedProfEntry extends StatelessWidget {
           authRepository: authRepository,
           providerRepository: providerRepository,
           corridaRepository: corridaRepository,
+          dispatchRepository: dispatchRepository,
           locationRepository: locationRepository,
           documentCapture: documentCapture,
           initialPhone: authRepository.currentPhone,

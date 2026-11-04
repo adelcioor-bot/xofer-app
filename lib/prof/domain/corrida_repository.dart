@@ -7,7 +7,11 @@ import 'package:xofer/prof/domain/rescue_offer.dart';
 import 'package:xofer/prof/domain/ride_status.dart';
 
 abstract class CorridaRepository {
-  Future<Corrida> requestRide({required NearbyCall call});
+  Future<Corrida> requestRide({
+    required NearbyCall call,
+    String requesterType = 'customer',
+    String serviceType = 'rescue',
+  });
 
   Future<Corrida> acceptCall(String id, {required LatLng driver});
 
@@ -34,6 +38,11 @@ abstract class CorridaRepository {
   Future<void> reportIncident(IncidentReport report);
 
   Future<Corrida> advance(String id, RideStatus status);
+
+  Future<void> rateCompletedDriver({
+    required String rideId,
+    required int stars,
+  });
 
   Future<Corrida> beginBoardingValidation(
     String id, {

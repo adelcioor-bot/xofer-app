@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -5,13 +6,15 @@ import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:xofer/core/theme/app_theme.dart';
 import 'package:xofer/features/places/domain/place.dart';
+import 'package:xofer/features/ride/data/supabase_ride_quote_repository.dart';
 import 'package:xofer/features/ride/domain/payment_method.dart';
 import 'package:xofer/features/ride/domain/ride_quote.dart';
+import 'package:xofer/features/ride/domain/ride_quote_repository.dart';
+import 'package:xofer/features/ride/presentation/ride_request_wait_screen.dart';
 import 'package:xofer/l10n/app_localizations.dart';
 import 'package:xofer/prof/domain/corrida_failure.dart';
 import 'package:xofer/prof/domain/corrida_repository.dart';
 import 'package:xofer/prof/domain/nearby_call.dart';
-import 'package:xofer/features/ride/presentation/ride_request_wait_screen.dart';
 
 class RideSummaryScreen extends StatefulWidget {
   const RideSummaryScreen({
@@ -19,25 +22,119 @@ class RideSummaryScreen extends StatefulWidget {
     required this.origin,
     required this.destination,
     this.corridaRepository,
+    this.quoteRepository,
+    this.requesterType = 'customer',
+    this.serviceType = 'rescue',
   });
 
   final Place origin;
   final Place destination;
   final CorridaRepository? corridaRepository;
+  final RideQuoteRepository? quoteRepository;
+  final String requesterType;
+  final String serviceType;
 
   @override
   State<RideSummaryScreen> createState() => _RideSummaryScreenState();
 }
 
 class _RideSummaryScreenState extends State<RideSummaryScreen> {
-  late final RideQuote _quote = RideQuote.between(
-    widget.origin,
-    widget.destination,
-  );
+  RideQuote? _quote;
+  Timer? _quoteTimer;
+  int _quoteRequest = 0;
+  int _quoteRemainingSeconds = 0;
+  bool _loadingQuote = false;
+  String? _quoteError;
   PaymentMethod _payment = PaymentMethod.creditCard;
   bool _pixCopied = false;
   bool _requesting = false;
   String? _requestError;
+
+  RideQuoteRepository get _quoteRepository =>
+      widget.quoteRepository ?? SupabaseRideQuoteRepository();
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadQuote());
+  }
+
+  @override
+  void didUpdateWidget(covariant RideSummaryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.origin.latitude != widget.origin.latitude ||
+        oldWidget.origin.longitude != widget.origin.longitude ||
+        oldWidget.destination.latitude != widget.destination.latitude ||
+        oldWidget.destination.longitude != widget.destination.longitude) {
+      unawaited(_loadQuote());
+    }
+  }
+
+  @override
+  void dispose() {
+    _quoteTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadQuote() async {
+    final request = ++_quoteRequest;
+    _quoteTimer?.cancel();
+    setState(() {
+      _quote = null;
+      _loadingQuote = true;
+      _quoteError = null;
+      _quoteRemainingSeconds = 0;
+      _pixCopied = false;
+    });
+    try {
+      final quote = await _quoteRepository.generate(
+        origin: widget.origin,
+        destination: widget.destination,
+        requesterType: widget.requesterType,
+      );
+      if (!mounted || request != _quoteRequest) return;
+      setState(() {
+        _quote = quote;
+        _loadingQuote = false;
+      });
+      _updateQuoteExpiration();
+      _quoteTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => _updateQuoteExpiration(),
+      );
+    } on RideQuoteFailure catch (error) {
+      if (!mounted || request != _quoteRequest) return;
+      setState(() {
+        _loadingQuote = false;
+        _quoteError = error.message;
+      });
+    } catch (_) {
+      if (!mounted || request != _quoteRequest) return;
+      setState(() {
+        _loadingQuote = false;
+        _quoteError = 'Não foi possível calcular o preço agora. Verifique sua conexão e tente novamente.';
+      });
+    }
+  }
+
+  void _updateQuoteExpiration() {
+    final quote = _quote;
+    if (quote == null || !mounted) return;
+    final remaining = quote.expiresAt.difference(DateTime.now()).inSeconds;
+    setState(() {
+      _quoteRemainingSeconds = remaining > 0 ? remaining : 0;
+    });
+    if (remaining <= 0) _quoteTimer?.cancel();
+  }
+
+  double _tripDistanceKm() {
+    const distance = Distance();
+    return distance.as(
+      LengthUnit.Kilometer,
+      LatLng(widget.origin.latitude, widget.origin.longitude),
+      LatLng(widget.destination.latitude, widget.destination.longitude),
+    );
+  }
 
   String _placeText(Place place) {
     final description = place.description.trim();
@@ -45,11 +142,21 @@ class _RideSummaryScreenState extends State<RideSummaryScreen> {
   }
 
   Future<void> _copyPix() async {
+    final quote = _quote;
+    if (quote == null || quote.isExpiredAt(DateTime.now())) return;
     setState(() => _pixCopied = true);
-    await Clipboard.setData(ClipboardData(text: pixCopyPaste(_quote)));
+    await Clipboard.setData(ClipboardData(text: pixCopyPaste(quote)));
   }
 
   Future<void> _confirm() async {
+    final quote = _quote;
+    if (quote == null || quote.isExpiredAt(DateTime.now())) {
+      setState(() {
+        _requestError =
+            'A cotação expirou. Solicite uma nova para confirmar a corrida.';
+      });
+      return;
+    }
     final repository = widget.corridaRepository;
     if (repository == null) {
       setState(() => _requestError = CorridaFailure.syncMessage);
@@ -73,18 +180,39 @@ class _RideSummaryScreenState extends State<RideSummaryScreen> {
         widget.destination.latitude,
         widget.destination.longitude,
       ),
-      distanceKm: _quote.distanceKm,
-      driverFare: _quote.price,
+      distanceKm: _tripDistanceKm(),
+      driverFare: quote.price,
+      quoteId: quote.id,
+      amountCents: quote.amountCents,
     );
     try {
-      final corrida = await repository.requestRide(call: call);
+      final corrida = await repository.requestRide(
+        call: call,
+        requesterType: widget.requesterType,
+        serviceType: widget.serviceType,
+      );
       if (!mounted) return;
+      if (widget.requesterType == 'merchant') {
+        final navigator = Navigator.of(context);
+        final messenger = ScaffoldMessenger.of(context);
+        navigator.popUntil((route) => route.isFirst);
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Chamado enviado. Acompanhe o status no painel do estabelecimento.',
+            ),
+          ),
+        );
+        return;
+      }
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (context) => RideRequestWaitScreen(
             call: call,
             corrida: corrida,
             repository: repository,
+            merchantMode: widget.requesterType == 'merchant',
+            merchantServiceType: widget.serviceType,
           ),
         ),
       );
@@ -101,6 +229,9 @@ class _RideSummaryScreenState extends State<RideSummaryScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final quote = _quote;
+    final quoteIsValid = quote != null && _quoteRemainingSeconds > 0;
+    final canConfirm = quoteIsValid && !_loadingQuote && !_requesting;
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.rideSummaryTitle)),
@@ -145,7 +276,7 @@ class _RideSummaryScreenState extends State<RideSummaryScreen> {
                           Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              formatKilometers(_quote.distanceKm),
+                              formatKilometers(_tripDistanceKm()),
                               key: const Key('summary_distance'),
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: Colors.white70,
@@ -167,79 +298,162 @@ class _RideSummaryScreenState extends State<RideSummaryScreen> {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         runSpacing: 4,
                         children: [
-                          Text(
-                            l10n.estimatedPrice,
-                            style: theme.textTheme.titleMedium,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Preço fixo',
+                                style: theme.textTheme.titleMedium,
+                              ),
+                              if (quoteIsValid)
+                                Text(
+                                  'Válido por ${(_quoteRemainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_quoteRemainingSeconds % 60).toString().padLeft(2, '0')}',
+                                  key: const Key('quote_expiration'),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white70,
+                                  ),
+                                )
+                              else if (quote != null)
+                                Text(
+                                  'Cotação expirada',
+                                  key: const Key('quote_expired'),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.redAccent,
+                                  ),
+                                )
+                              else if (_quoteError != null)
+                                Text(
+                                  _quoteError!,
+                                  key: const Key('quote_error'),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.redAccent,
+                                  ),
+                                )
+                              else
+                                Text(
+                                  'Calculando cotação segura...',
+                                  key: const Key('quote_loading'),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              if (_quoteError != null)
+                                TextButton(
+                                  key: const Key('retry_quote_button'),
+                                  onPressed: _loadingQuote ? null : _loadQuote,
+                                  child: const Text('Tentar novamente'),
+                                ),
+                              if (quote != null && !quoteIsValid)
+                                TextButton(
+                                  key: const Key('refresh_quote_button'),
+                                  onPressed: _loadingQuote ? null : _loadQuote,
+                                  child: const Text('Atualizar cotação'),
+                                ),
+                            ],
                           ),
-                          Text(
-                            formatBrl(_quote.price),
-                            key: const Key('ride_price'),
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: AppTheme.amber,
-                              fontWeight: FontWeight.w800,
+                          if (_loadingQuote)
+                            const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                key: Key('quote_loading_indicator'),
+                                strokeWidth: 2.4,
+                              ),
+                            )
+                          else
+                            Text(
+                              quote == null
+                                  ? '--'
+                                  : formatBrlCents(quote.amountCents),
+                              key: const Key('ride_price'),
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                color: AppTheme.amber,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    l10n.paymentMethod,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _PaymentOption(
-                    optionKey: const Key('payment_credit'),
-                    selected: _payment == PaymentMethod.creditCard,
-                    icon: Icons.credit_card,
-                    title: l10n.creditCard,
-                    subtitle: l10n.savedCard,
-                    onTap: () => setState(() {
-                      _payment = PaymentMethod.creditCard;
-                      _pixCopied = false;
-                    }),
-                  ),
-                  const SizedBox(height: 8),
-                  _PaymentOption(
-                    optionKey: const Key('payment_pix'),
-                    selected: _payment == PaymentMethod.pix,
-                    icon: Icons.qr_code_2,
-                    title: l10n.pix,
-                    subtitle: l10n.pixCopyPaste,
-                    onTap: () => setState(() => _payment = PaymentMethod.pix),
-                  ),
-                  if (_payment == PaymentMethod.pix) ...[
-                    const SizedBox(height: 8),
+                  if (widget.requesterType == 'merchant') ...[
+                    const SizedBox(height: 16),
                     Material(
                       color: AppTheme.graphiteSurface,
                       borderRadius: BorderRadius.circular(12),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              pixCopyPaste(_quote),
-                              key: const Key('pix_code'),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.white70,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              key: const Key('pix_copy_button'),
-                              onPressed: _copyPix,
-                              child: Text(
-                                _pixCopied ? l10n.pixCopied : l10n.copyPixCode,
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          'O valor é uma cotação fixa. Pagamentos digitais para '
+                          'estabelecimentos ainda não estão configurados; '
+                          'nenhuma cobrança será realizada neste chamado.',
+                          key: const Key('merchant_payment_not_configured'),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.white70,
+                          ),
                         ),
                       ),
                     ),
+                  ] else ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      l10n.paymentMethod,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _PaymentOption(
+                      optionKey: const Key('payment_credit'),
+                      selected: _payment == PaymentMethod.creditCard,
+                      icon: Icons.credit_card,
+                      title: l10n.creditCard,
+                      subtitle: l10n.savedCard,
+                      onTap: () => setState(() {
+                        _payment = PaymentMethod.creditCard;
+                        _pixCopied = false;
+                      }),
+                    ),
+                    const SizedBox(height: 8),
+                    _PaymentOption(
+                      optionKey: const Key('payment_pix'),
+                      selected: _payment == PaymentMethod.pix,
+                      icon: Icons.qr_code_2,
+                      title: l10n.pix,
+                      subtitle: l10n.pixCopyPaste,
+                      onTap: () => setState(() => _payment = PaymentMethod.pix),
+                    ),
+                    if (_payment == PaymentMethod.pix && quoteIsValid) ...[
+                      const SizedBox(height: 8),
+                      Material(
+                        color: AppTheme.graphiteSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                pixCopyPaste(quote),
+                                key: const Key('pix_code'),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.white70,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                key: const Key('pix_copy_button'),
+                                onPressed: _copyPix,
+                                child: Text(
+                                  _pixCopied
+                                      ? l10n.pixCopied
+                                      : l10n.copyPixCode,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),
@@ -262,7 +476,7 @@ class _RideSummaryScreenState extends State<RideSummaryScreen> {
                   ],
                   ElevatedButton(
                     key: const Key('confirm_ride_button'),
-                    onPressed: _requesting ? null : _confirm,
+                    onPressed: canConfirm ? _confirm : null,
                     child: _requesting
                         ? const SizedBox(
                             width: 22,

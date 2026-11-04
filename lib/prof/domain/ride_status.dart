@@ -34,8 +34,8 @@ class RescuePhaseMachine {
       };
     }
     return switch (current) {
+      RideStatus.conduzindoDestino => RideStatus.emAndamento,
       RideStatus.emAndamento => RideStatus.concluida,
-      RideStatus.conduzindoDestino => RideStatus.concluida,
       _ => null,
     };
   }
@@ -44,6 +44,7 @@ class RescuePhaseMachine {
     return switch (next(current, role)) {
       RideStatus.aCaminhoDoCliente => 'Cheguei ao Motorista',
       RideStatus.conduzindoDestino => 'Motorista Entregue no Cliente',
+      RideStatus.emAndamento => 'Iniciar Corrida',
       RideStatus.concluida => 'Finalizar Corrida',
       _ => null,
     };

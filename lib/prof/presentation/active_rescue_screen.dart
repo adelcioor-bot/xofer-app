@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:xofer/core/theme/app_theme.dart';
-import 'package:xofer/features/ride/domain/ride_quote.dart';
 import 'package:xofer/features/ride/presentation/boarding_qr_screen.dart';
 import 'package:xofer/prof/domain/corrida.dart';
 import 'package:xofer/prof/domain/corrida_failure.dart';
@@ -34,6 +33,7 @@ class ActiveRescueScreen extends StatefulWidget {
     this.tolerance = const Duration(minutes: 3),
     this.now,
     this.documentCapture,
+    this.blindDispatch = false,
     this.stepInterval = const Duration(seconds: 2),
     this.approachSteps = 4,
     this.clientSteps = 4,
@@ -53,6 +53,7 @@ class ActiveRescueScreen extends StatefulWidget {
   final Duration tolerance;
   final DateTime Function()? now;
   final DocumentCapture? documentCapture;
+  final bool blindDispatch;
   final Duration stepInterval;
   final int approachSteps;
   final int clientSteps;
@@ -89,6 +90,7 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
   bool _qrVisible = false;
   String? _syncMessage;
   bool _allowExit = false;
+  bool _returningToDispatch = false;
   late final DateTime _acceptedAt = widget.acceptedAt ?? DateTime.now();
   RideStatus _status = RideStatus.procurandoMotoboy;
   String? _motoboyId;
@@ -105,9 +107,9 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
       RideStatus.procurandoMotoboy => RescueStage.motoboyToDriver,
       RideStatus.motoboyACaminho => RescueStage.motoboyToDriver,
       RideStatus.aCaminhoDoCliente => RescueStage.toClientCar,
-      RideStatus.aguardandoValidacaoEmbarque => RescueStage.toClientCar,
+      RideStatus.aguardandoValidacaoEmbarque ||
+      RideStatus.conduzindoDestino => RescueStage.toClientCar,
       RideStatus.emAndamento => RescueStage.toDestination,
-      RideStatus.conduzindoDestino => RescueStage.toDestination,
       RideStatus.concluida => RescueStage.finished,
     };
   }
@@ -126,8 +128,20 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
     return _simulation.glide(_segment, _glide.value);
   }
 
-  String? get _actionLabel =>
-      RescuePhaseMachine.actionLabel(_status, widget.role);
+  bool get _merchantDelivery =>
+      widget.call.requesterType == 'merchant' &&
+      widget.call.serviceType == 'delivery';
+
+  String? get _actionLabel {
+    if (_merchantDelivery && _courier) {
+      return switch (_status) {
+        RideStatus.motoboyACaminho => 'Confirmar retirada do pedido',
+        RideStatus.aCaminhoDoCliente => 'Confirmar entrega ao destinatário',
+        _ => null,
+      };
+    }
+    return RescuePhaseMachine.actionLabel(_status, widget.role);
+  }
 
   bool get _courier => widget.role == PartnerRole.courier;
 
@@ -198,6 +212,15 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
     _apply(corrida.status);
     _focus();
     if (waiting) _openQr();
+    if (widget.blindDispatch &&
+        !_courier &&
+        corrida.status == RideStatus.concluida &&
+        !_returningToDispatch) {
+      _returningToDispatch = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+    }
   }
 
   Future<void> _openQr() async {
@@ -289,11 +312,15 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
       await _ready;
       final repository = widget.corridaRepository;
       final id = _corridaId;
+      final nextStatus =
+          _merchantDelivery && _courier && next == RideStatus.conduzindoDestino
+          ? RideStatus.concluida
+          : next;
       if (repository != null && id != null) {
-        final updated = await repository.advance(id, next);
+        final updated = await repository.advance(id, nextStatus);
         _apply(updated.status);
       } else {
-        _apply(next);
+        _apply(nextStatus);
       }
     } on CorridaFailure catch (error) {
       if (!mounted) return;
@@ -415,6 +442,15 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
       return 'Aguardando um Motoboy para resgate...';
     }
     if (_courier) {
+      if (_merchantDelivery) {
+        return switch (_stage) {
+          RescueStage.motoboyToDriver =>
+            'Indo retirar o pedido no estabelecimento',
+          RescueStage.toClientCar => 'Levando o pedido ao destinatário',
+          RescueStage.finished => 'Entrega concluída',
+          RescueStage.toDestination => 'Entrega concluída',
+        };
+      }
       return switch (_stage) {
         RescueStage.motoboyToDriver => 'Indo ao encontro do motorista',
         RescueStage.toClientCar => 'Levando o motorista até o carro do cliente',
@@ -424,6 +460,17 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
     }
     final assigned = widget.motoboyName;
     final eta = widget.etaMinutes;
+    if (_status == RideStatus.motoboyACaminho) {
+      return 'Motoboy a caminho do motorista';
+    }
+    if (_status == RideStatus.aCaminhoDoCliente) {
+      return 'Motorista resgatado. A caminho do ponto de embarque';
+    }
+    if (_status == RideStatus.conduzindoDestino) {
+      return 'No ponto de embarque. Inicie a corrida';
+    }
+    if (_status == RideStatus.emAndamento) return 'Corrida em andamento';
+    if (_status == RideStatus.concluida) return 'Corrida concluída';
     return switch (_stage) {
       RescueStage.motoboyToDriver when assigned != null && eta != null =>
         assignedMotoboyMessage(assigned, eta),
@@ -511,18 +558,21 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
                   ),
                 MarkerLayer(
                   markers: [
-                    Marker(
-                      key: const Key('client_car_marker'),
-                      point: widget.call.client,
-                      width: 36,
-                      height: 36,
-                      child: const Icon(
-                        Icons.directions_car_filled,
-                        color: AppTheme.amber,
-                        size: 28,
+                    if (!_courier || _stage != RescueStage.motoboyToDriver)
+                      Marker(
+                        key: const Key('client_car_marker'),
+                        point: widget.call.client,
+                        width: 36,
+                        height: 36,
+                        child: const Icon(
+                          Icons.directions_car_filled,
+                          color: AppTheme.amber,
+                          size: 28,
+                        ),
                       ),
-                    ),
-                    if (!_courier)
+                    if (!_courier &&
+                        (_status == RideStatus.emAndamento ||
+                            _status == RideStatus.concluida))
                       Marker(
                         key: const Key('dropoff_marker'),
                         point: widget.call.dropoff,
@@ -630,8 +680,27 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
                             ),
                           ],
                           const SizedBox(height: 8),
-                          Text(widget.call.origin),
-                          if (!_courier)
+                          if (_courier && _stage == RescueStage.motoboyToDriver)
+                            Text(
+                              _merchantDelivery
+                                  ? 'Local de retirada: ${widget.call.origin}'
+                                  : 'Ponto de encontro do motorista: '
+                                        '${_simulation.partner.latitude.toStringAsFixed(5)}, '
+                                        '${_simulation.partner.longitude.toStringAsFixed(5)}',
+                              key: const Key('courier_meeting_point'),
+                            ),
+                          if (_courier && _stage != RescueStage.motoboyToDriver)
+                            Text(
+                              _merchantDelivery
+                                  ? 'Endereço de entrega: ${widget.call.destination}'
+                                  : 'Local para deixar o motorista: '
+                                        '${widget.call.origin}',
+                              key: const Key('courier_dropoff_address'),
+                            ),
+                          if (!_courier) Text(widget.call.origin),
+                          if (!_courier &&
+                              (_status == RideStatus.emAndamento ||
+                                  _status == RideStatus.concluida))
                             Text(
                               widget.call.destination,
                               style: theme.textTheme.bodyMedium?.copyWith(
@@ -639,7 +708,7 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
                               ),
                             ),
                           if (!_courier &&
-                              _status == RideStatus.conduzindoDestino) ...[
+                              _status == RideStatus.emAndamento) ...[
                             const SizedBox(height: 8),
                             Text(
                               'Siga com o carro do cliente até ${widget.call.destination}.',
@@ -659,13 +728,6 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
                               ),
                             ),
                           ],
-                          const SizedBox(height: 12),
-                          Text(
-                            formatBrl(widget.call.driverFare),
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
                           if (_actionLabel != null) ...[
                             const SizedBox(height: 12),
                             SizedBox(
@@ -677,7 +739,8 @@ class _ActiveRescueScreenState extends State<ActiveRescueScreen>
                               ),
                             ),
                           ],
-                          if (!_courier &&
+                          if (!widget.blindDispatch &&
+                              !_courier &&
                               _status == RideStatus.aCaminhoDoCliente) ...[
                             const SizedBox(height: 12),
                             SizedBox(

@@ -14,11 +14,13 @@ class PartnerAuthScreen extends StatefulWidget {
     required this.role,
     required this.authRepository,
     required this.onVerified,
+    this.simulateLocalOtp,
   });
 
   final PartnerRole role;
   final AuthRepository authRepository;
   final ValueChanged<String> onVerified;
+  final bool? simulateLocalOtp;
 
   @override
   State<PartnerAuthScreen> createState() => _PartnerAuthScreenState();
@@ -31,6 +33,9 @@ class _PartnerAuthScreenState extends State<PartnerAuthScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   String? _normalizedPhone;
+
+  bool get _shouldSimulateLocalOtp =>
+      widget.simulateLocalOtp ?? AppConfig.shouldSimulateLocalOtp;
 
   @override
   void dispose() {
@@ -56,6 +61,15 @@ class _PartnerAuthScreenState extends State<PartnerAuthScreen> {
     });
     try {
       await widget.authRepository.sendOtp(phone);
+      if (_shouldSimulateLocalOtp) {
+        await widget.authRepository.verifyOtp(
+          phoneNumber: phone,
+          code: AppConfig.localTestOtp,
+        );
+        if (!mounted) return;
+        widget.onVerified(phone);
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _otpSent = true;
@@ -171,7 +185,9 @@ class _PartnerAuthScreenState extends State<PartnerAuthScreen> {
                   ],
                   const SizedBox(height: 20),
                   ElevatedButton(
-                    key: Key(_otpSent ? 'partner_verify_otp' : 'partner_send_otp'),
+                    key: Key(
+                      _otpSent ? 'partner_verify_otp' : 'partner_send_otp',
+                    ),
                     onPressed: _isLoading
                         ? null
                         : (_otpSent ? _verifyOtp : _sendOtp),

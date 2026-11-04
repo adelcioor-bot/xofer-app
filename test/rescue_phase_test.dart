@@ -39,7 +39,7 @@ void main() {
     );
   });
 
-  test('o motorista só finaliza a navegação até o destino', () {
+  test('o motorista inicia a corrida e depois pode finalizá-la', () {
     expect(
       RescuePhaseMachine.next(RideStatus.motoboyACaminho, PartnerRole.driver),
       isNull,
@@ -50,11 +50,22 @@ void main() {
     );
     expect(
       RescuePhaseMachine.next(RideStatus.conduzindoDestino, PartnerRole.driver),
-      RideStatus.concluida,
+      RideStatus.emAndamento,
     );
     expect(
       RescuePhaseMachine.actionLabel(
         RideStatus.conduzindoDestino,
+        PartnerRole.driver,
+      ),
+      'Iniciar Corrida',
+    );
+    expect(
+      RescuePhaseMachine.next(RideStatus.emAndamento, PartnerRole.driver),
+      RideStatus.concluida,
+    );
+    expect(
+      RescuePhaseMachine.actionLabel(
+        RideStatus.emAndamento,
         PartnerRole.driver,
       ),
       'Finalizar Corrida',

@@ -259,7 +259,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Motoboy a caminho do seu encontro'), findsOneWidget);
+    expect(find.text('Motoboy a caminho do motorista'), findsOneWidget);
     expect(find.byIcon(Icons.two_wheeler), findsWidgets);
     expect(find.byIcon(Icons.person), findsWidgets);
     expect(find.text('Finalizar Corrida'), findsNothing);
@@ -280,14 +280,39 @@ void main() {
     corridas.push(RideStatus.aCaminhoDoCliente);
     await tester.pump();
     await tester.pump();
-    expect(find.text('A caminho do carro do cliente'), findsOneWidget);
+    expect(
+      find.text('Motorista resgatado. A caminho do ponto de embarque'),
+      findsOneWidget,
+    );
+    expect(find.text('Origem'), findsOneWidget);
+    expect(find.text('Destino'), findsNothing);
+    expect(find.textContaining(r'R$'), findsNothing);
+    var markers = tester.widget<MarkerLayer>(find.byType(MarkerLayer)).markers;
+    expect(
+      markers.any((marker) => marker.key == const Key('dropoff_marker')),
+      isFalse,
+    );
     expect(find.byIcon(Icons.person), findsWidgets);
     expect(find.byIcon(Icons.directions_car), findsNothing);
 
     corridas.push(RideStatus.conduzindoDestino);
     await tester.pump();
     await tester.pump();
-    expect(find.text('Navegação até o destino'), findsOneWidget);
+    expect(find.text('No ponto de embarque. Inicie a corrida'), findsOneWidget);
+    expect(find.text('Destino'), findsNothing);
+    expect(find.text('Iniciar Corrida'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('advance_phase_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Corrida em andamento'), findsOneWidget);
+    expect(find.text('Destino'), findsOneWidget);
+    markers = tester.widget<MarkerLayer>(find.byType(MarkerLayer)).markers;
+    expect(
+      markers.any((marker) => marker.key == const Key('dropoff_marker')),
+      isTrue,
+    );
     expect(find.byKey(const Key('navigation_hint')), findsOneWidget);
     expect(find.byIcon(Icons.directions_car), findsWidgets);
     expect(find.text('Finalizar Corrida'), findsOneWidget);
@@ -297,7 +322,66 @@ void main() {
     await tester.pump();
 
     expect(find.text('Corrida concluída'), findsOneWidget);
-    expect(corridas.advanced, [RideStatus.concluida]);
+    expect(corridas.advanced, [RideStatus.emAndamento, RideStatus.concluida]);
+  });
+
+  testWidgets('o motorista volta ao despacho após concluir uma missão cega', (
+    tester,
+  ) async {
+    const call = NearbyCall(
+      id: 'blind-driver-completion',
+      origin: 'Origem',
+      destination: 'Destino',
+      client: LatLng(-23.54, -46.62),
+      dropoff: LatLng(-23.53, -46.61),
+      distanceKm: 2,
+      driverFare: 15,
+    );
+    final corridas = MemoryCorridaRepository();
+    await corridas.requestRide(call: call);
+    await corridas.acceptCall(
+      corridas.current!.id,
+      driver: const LatLng(-23.55, -46.63),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkTheme,
+        locale: const Locale('pt'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: ElevatedButton(
+                key: const Key('open_blind_driver_mission'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ActiveRescueScreen(
+                      role: PartnerRole.driver,
+                      driver: const LatLng(-23.55, -46.63),
+                      call: call,
+                      corridaRepository: corridas,
+                      blindDispatch: true,
+                    ),
+                  ),
+                ),
+                child: const Text('Aguardando nova missão'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('open_blind_driver_mission')));
+    await tester.pump();
+    await tester.pump();
+    corridas.push(RideStatus.concluida);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Aguardando nova missão'), findsOneWidget);
+    expect(find.byKey(const Key('active_rescue_screen')), findsNothing);
   });
 
   testWidgets('o motoboy avança as fases e grava o status', (tester) async {
@@ -332,6 +416,10 @@ void main() {
     await tester.pump();
     expect(find.text('Indo ao encontro do motorista'), findsOneWidget);
     expect(find.text('Cheguei ao Motorista'), findsOneWidget);
+    expect(find.byKey(const Key('courier_meeting_point')), findsOneWidget);
+    expect(find.byKey(const Key('client_car_marker')), findsNothing);
+    expect(find.textContaining('Destino'), findsNothing);
+    expect(find.textContaining(r'R$'), findsNothing);
     expect(find.byIcon(Icons.two_wheeler), findsWidgets);
 
     final approach = tester
@@ -353,6 +441,9 @@ void main() {
       find.text('Levando o motorista até o carro do cliente'),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('courier_dropoff_address')), findsOneWidget);
+    expect(find.byKey(const Key('client_car_marker')), findsOneWidget);
+    expect(find.textContaining('Destino'), findsNothing);
     expect(find.text('Motorista Entregue no Cliente'), findsOneWidget);
     expect(corridas.advanced, [RideStatus.aCaminhoDoCliente]);
     final toClient = tester
@@ -428,7 +519,11 @@ void main() {
 
 class _MissingCorridas implements CorridaRepository {
   @override
-  Future<Corrida> requestRide({required NearbyCall call}) {
+  Future<Corrida> requestRide({
+    required NearbyCall call,
+    String requesterType = 'customer',
+    String serviceType = 'rescue',
+  }) {
     throw CorridaFailure.fromRemote(
       code: 'PGRST205',
       message: 'Could not find the table public.corridas in the schema cache',
@@ -450,6 +545,12 @@ class _MissingCorridas implements CorridaRepository {
       message: 'Could not find the table public.corridas in the schema cache',
     );
   }
+
+  @override
+  Future<void> rateCompletedDriver({
+    required String rideId,
+    required int stars,
+  }) async {}
 
   @override
   Future<Corrida> open({

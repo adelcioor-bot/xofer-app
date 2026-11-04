@@ -20,20 +20,31 @@ class MemoryCorridaRepository implements CorridaRepository {
   final List<String> released = [];
   final List<String> acceptedDrivers = [];
   final List<IncidentReport> incidents = [];
+  final Map<String, int> driverRatings = {};
   Corrida? current;
   NearbyCall? call;
   LatLng? driverPoint;
+  String? requesterType;
+  String? serviceType;
 
   @override
-  Future<Corrida> requestRide({required NearbyCall call}) async {
+  Future<Corrida> requestRide({
+    required NearbyCall call,
+    String requesterType = 'customer',
+    String serviceType = 'rescue',
+  }) async {
     final error = openError;
     if (error != null) throw error;
     this.call = call;
+    this.requesterType = requesterType;
+    this.serviceType = serviceType;
     driverPoint = call.client;
     final created = Corrida(
       id: 'corrida-${call.id}',
       callId: call.id,
-      status: RideStatus.buscandoPrestadores,
+      status: requesterType == 'merchant' && serviceType == 'delivery'
+          ? RideStatus.procurandoMotoboy
+          : RideStatus.buscandoPrestadores,
       origin: call.origin,
       destination: call.destination,
     );
@@ -253,6 +264,19 @@ class MemoryCorridaRepository implements CorridaRepository {
     current = next;
     if (!_updates.isClosed) _updates.add(next);
     return next;
+  }
+
+  @override
+  Future<void> rateCompletedDriver({
+    required String rideId,
+    required int stars,
+  }) async {
+    if (stars < 1 || stars > 5) {
+      throw const CorridaFailure(
+        'Selecione uma avaliação entre 1 e 5 estrelas.',
+      );
+    }
+    driverRatings[rideId] = stars;
   }
 
   @override

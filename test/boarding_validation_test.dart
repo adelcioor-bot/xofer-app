@@ -43,6 +43,14 @@ const _call = NearbyCall(
   driverFare: 15,
 );
 
+RideQuote _quote() {
+  return RideQuote(
+    id: 'quote-boarding-test',
+    amountCents: 1500,
+    expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+  );
+}
+
 class _FixedScanner implements BoardingScanner {
   _FixedScanner(this.code, {this.reserveCode = false});
 
@@ -144,13 +152,13 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('boarding_qr_screen')), findsNothing);
-    expect(find.text('Navegação até o destino'), findsOneWidget);
+    expect(find.text('Corrida em andamento'), findsOneWidget);
     expect(corridas.current?.status, RideStatus.emAndamento);
   });
 
   testWidgets('QR diferente da corrida ativa é recusado', (tester) async {
     final corridas = await _waitingCorrida('TOKEN-CERTO', reserveCode: '9876');
-    final quote = RideQuote.between(_origin, _destination);
+    final quote = _quote();
 
     await tester.pumpWidget(
       _app(
@@ -185,7 +193,7 @@ void main() {
 
   testWidgets('o QR da corrida ativa libera a navegação', (tester) async {
     final corridas = await _waitingCorrida('TOKEN-CERTO', reserveCode: '1234');
-    final quote = RideQuote.between(_origin, _destination);
+    final quote = _quote();
 
     await tester.pumpWidget(
       _app(
@@ -235,7 +243,7 @@ void main() {
   ) async {
     final corridas = await _waitingCorrida('TOKEN-CERTO');
     final reserveCode = corridas.current!.reserveCode!;
-    final quote = RideQuote.between(_origin, _destination);
+    final quote = _quote();
 
     await tester.pumpWidget(
       _app(
@@ -266,7 +274,7 @@ void main() {
     tester,
   ) async {
     final corridas = await _waitingCorrida('TOKEN-CERTO');
-    final quote = RideQuote.between(_origin, _destination);
+    final quote = _quote();
     final scanner = _FixedScanner('0000', reserveCode: true);
 
     await tester.pumpWidget(

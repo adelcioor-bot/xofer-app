@@ -9,6 +9,7 @@ import 'package:xofer/features/profile/domain/profile_failure.dart';
 import 'package:xofer/features/profile/domain/profile_repository.dart';
 import 'package:xofer/features/profile/domain/user_profile.dart';
 import 'package:xofer/features/profile/presentation/complete_profile_screen.dart';
+import 'package:xofer/features/ride/domain/ride_quote_repository.dart';
 import 'package:xofer/l10n/app_localizations.dart';
 import 'package:xofer/prof/domain/corrida_repository.dart';
 
@@ -20,6 +21,7 @@ class ProfileGate extends StatefulWidget {
     required this.locationRepository,
     required this.placeSearchRepository,
     this.corridaRepository,
+    this.rideQuoteRepository,
     this.testProfileSeed,
   });
 
@@ -28,6 +30,7 @@ class ProfileGate extends StatefulWidget {
   final LocationRepository locationRepository;
   final PlaceSearchRepository placeSearchRepository;
   final CorridaRepository? corridaRepository;
+  final RideQuoteRepository? rideQuoteRepository;
   final TestProfileSeed? testProfileSeed;
 
   @override
@@ -175,6 +178,7 @@ class _ProfileGateState extends State<ProfileGate> {
         locationRepository: widget.locationRepository,
         placeSearchRepository: widget.placeSearchRepository,
         corridaRepository: widget.corridaRepository,
+        rideQuoteRepository: widget.rideQuoteRepository,
       );
     }
 

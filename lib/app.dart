@@ -6,6 +6,7 @@ import 'package:xofer/features/auth/presentation/auth_gate.dart';
 import 'package:xofer/features/location/domain/location_repository.dart';
 import 'package:xofer/features/places/domain/place_search_repository.dart';
 import 'package:xofer/features/profile/domain/profile_repository.dart';
+import 'package:xofer/features/ride/domain/ride_quote_repository.dart';
 import 'package:xofer/l10n/app_localizations.dart';
 import 'package:xofer/prof/domain/corrida_repository.dart';
 
@@ -17,6 +18,7 @@ class XoferApp extends StatelessWidget {
     required this.locationRepository,
     required this.placeSearchRepository,
     this.corridaRepository,
+    this.rideQuoteRepository,
     this.testProfileSeed,
   });
 
@@ -25,6 +27,7 @@ class XoferApp extends StatelessWidget {
   final LocationRepository locationRepository;
   final PlaceSearchRepository placeSearchRepository;
   final CorridaRepository? corridaRepository;
+  final RideQuoteRepository? rideQuoteRepository;
   final TestProfileSeed? testProfileSeed;
 
   @override
@@ -44,6 +47,7 @@ class XoferApp extends StatelessWidget {
         locationRepository: locationRepository,
         placeSearchRepository: placeSearchRepository,
         corridaRepository: corridaRepository,
+        rideQuoteRepository: rideQuoteRepository,
         testProfileSeed: testProfileSeed,
       ),
     );

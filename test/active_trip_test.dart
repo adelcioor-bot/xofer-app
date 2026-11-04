@@ -57,7 +57,11 @@ LatLng _vehicle(WidgetTester tester) {
 void main() {
   testWidgets('o carro vai ao encontro e depois ao destino', (tester) async {
     const interval = Duration(milliseconds: 40);
-    final quote = RideQuote.between(_origin, _destination);
+    final quote = RideQuote(
+      id: 'quote-active-trip',
+      amountCents: 1875,
+      expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+    );
 
     await tester.pumpWidget(
       _wrap(

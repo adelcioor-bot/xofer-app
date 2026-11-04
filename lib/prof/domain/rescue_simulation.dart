@@ -55,16 +55,17 @@ class RescueSimulation {
     LatLng? motoboyTarget,
   }) {
     if (role == PartnerRole.courier) {
-      final driver = motoboyTarget ?? rescueLerp(partner, client, 0.35);
+      final courierStart = motoboyOrigin ?? partner;
+      final driver = motoboyTarget ?? rescueLerp(courierStart, client, 0.35);
       return RescueSimulation(
         role: role,
         partner: driver,
         client: client,
         dropoff: dropoff,
-        motoboyStart: partner,
+        motoboyStart: courierStart,
         legs: [
           RescueLeg(
-            from: partner,
+            from: courierStart,
             to: driver,
             steps: approachSteps,
             stage: RescueStage.motoboyToDriver,

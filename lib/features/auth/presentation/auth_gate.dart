@@ -7,6 +7,7 @@ import 'package:xofer/features/location/domain/location_repository.dart';
 import 'package:xofer/features/places/domain/place_search_repository.dart';
 import 'package:xofer/features/profile/domain/profile_repository.dart';
 import 'package:xofer/features/profile/presentation/profile_gate.dart';
+import 'package:xofer/features/ride/domain/ride_quote_repository.dart';
 import 'package:xofer/prof/domain/corrida_repository.dart';
 
 class AuthGate extends StatefulWidget {
@@ -17,6 +18,7 @@ class AuthGate extends StatefulWidget {
     required this.locationRepository,
     required this.placeSearchRepository,
     this.corridaRepository,
+    this.rideQuoteRepository,
     this.authStateStream,
     this.currentSession,
     this.testProfileSeed,
@@ -27,6 +29,7 @@ class AuthGate extends StatefulWidget {
   final LocationRepository locationRepository;
   final PlaceSearchRepository placeSearchRepository;
   final CorridaRepository? corridaRepository;
+  final RideQuoteRepository? rideQuoteRepository;
   final Stream<AuthState>? authStateStream;
   final Session? currentSession;
   final TestProfileSeed? testProfileSeed;
@@ -68,6 +71,7 @@ class _AuthGateState extends State<AuthGate> {
             locationRepository: widget.locationRepository,
             placeSearchRepository: widget.placeSearchRepository,
             corridaRepository: widget.corridaRepository,
+            rideQuoteRepository: widget.rideQuoteRepository,
             testProfileSeed: widget.testProfileSeed,
           );
         }

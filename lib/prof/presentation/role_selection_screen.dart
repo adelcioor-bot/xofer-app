@@ -3,6 +3,7 @@ import 'package:xofer/core/theme/app_theme.dart';
 import 'package:xofer/features/auth/domain/auth_repository.dart';
 import 'package:xofer/features/location/domain/location_repository.dart';
 import 'package:xofer/prof/domain/corrida_repository.dart';
+import 'package:xofer/prof/domain/dispatch_repository.dart';
 import 'package:xofer/prof/domain/document_capture.dart';
 import 'package:xofer/prof/domain/partner_role.dart';
 import 'package:xofer/prof/domain/provider_repository.dart';
@@ -14,6 +15,7 @@ class RoleSelectionScreen extends StatelessWidget {
     required this.authRepository,
     required this.providerRepository,
     this.corridaRepository,
+    this.dispatchRepository,
     required this.locationRepository,
     required this.documentCapture,
     this.initialPhone,
@@ -23,6 +25,7 @@ class RoleSelectionScreen extends StatelessWidget {
   final AuthRepository authRepository;
   final ProviderRepository providerRepository;
   final CorridaRepository? corridaRepository;
+  final DispatchRepository? dispatchRepository;
   final LocationRepository locationRepository;
   final DocumentCapture documentCapture;
   final String? initialPhone;
@@ -36,6 +39,7 @@ class RoleSelectionScreen extends StatelessWidget {
           authRepository: authRepository,
           providerRepository: providerRepository,
           corridaRepository: corridaRepository,
+          dispatchRepository: dispatchRepository,
           locationRepository: locationRepository,
           documentCapture: documentCapture,
           initialPhone: initialPhone,

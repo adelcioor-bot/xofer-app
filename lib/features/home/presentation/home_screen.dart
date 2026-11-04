@@ -13,6 +13,7 @@ import 'package:xofer/features/places/domain/place_search_failure.dart';
 import 'package:xofer/features/places/domain/place_search_repository.dart';
 import 'package:xofer/features/places/presentation/destination_search_bar.dart';
 import 'package:xofer/features/ride/presentation/ride_summary_screen.dart';
+import 'package:xofer/features/ride/domain/ride_quote_repository.dart';
 import 'package:xofer/l10n/app_localizations.dart';
 import 'package:xofer/prof/domain/corrida_repository.dart';
 
@@ -23,16 +24,22 @@ class HomeScreen extends StatefulWidget {
     required this.locationRepository,
     required this.placeSearchRepository,
     this.corridaRepository,
+    this.rideQuoteRepository,
     this.mapController,
     this.onAdvance,
+    this.requesterType = 'customer',
+    this.serviceType = 'rescue',
   });
 
   final AuthRepository authRepository;
   final LocationRepository locationRepository;
   final PlaceSearchRepository placeSearchRepository;
   final CorridaRepository? corridaRepository;
+  final RideQuoteRepository? rideQuoteRepository;
   final MapController? mapController;
   final void Function(Place origin, Place destination)? onAdvance;
+  final String requesterType;
+  final String serviceType;
 
   static const fallbackCenter = LatLng(-23.5505, -46.6333);
   static const userZoom = 16.0;
@@ -322,6 +329,9 @@ class _HomeScreenState extends State<HomeScreen> {
               origin: origin,
               destination: destination,
               corridaRepository: widget.corridaRepository,
+              quoteRepository: widget.rideQuoteRepository,
+              requesterType: widget.requesterType,
+              serviceType: widget.serviceType,
             ),
           ),
         )

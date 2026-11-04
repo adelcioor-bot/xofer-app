@@ -6,6 +6,7 @@ import 'package:xofer/features/auth/data/supabase_auth_repository.dart';
 import 'package:xofer/features/location/data/geolocator_location_repository.dart';
 import 'package:xofer/features/places/data/nominatim_place_search_repository.dart';
 import 'package:xofer/features/profile/data/supabase_profile_repository.dart';
+import 'package:xofer/features/ride/data/supabase_ride_quote_repository.dart';
 import 'package:xofer/prof/data/supabase_corrida_repository.dart';
 
 Future<void> main() async {
@@ -13,6 +14,7 @@ Future<void> main() async {
 
   final authRepository = SupabaseAuthRepository();
   final profileRepository = SupabaseProfileRepository();
+  final rideQuoteRepository = SupabaseRideQuoteRepository();
   const locationRepository = GeolocatorLocationRepository();
   final placeSearchRepository = NominatimPlaceSearchRepository();
 
@@ -23,6 +25,7 @@ Future<void> main() async {
       locationRepository: locationRepository,
       placeSearchRepository: placeSearchRepository,
       corridaRepository: SupabaseCorridaRepository(),
+      rideQuoteRepository: rideQuoteRepository,
       testProfileSeed: AppConfig.testProfileSeed,
     ),
   );

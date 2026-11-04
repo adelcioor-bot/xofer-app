@@ -9,6 +9,11 @@ class NearbyCall {
     required this.dropoff,
     required this.distanceKm,
     required this.driverFare,
+    this.meetingPoint,
+    this.quoteId,
+    this.amountCents,
+    this.requesterType = 'customer',
+    this.serviceType = 'rescue',
   });
 
   final String id;
@@ -18,4 +23,9 @@ class NearbyCall {
   final LatLng dropoff;
   final double distanceKm;
   final double driverFare;
+  final LatLng? meetingPoint;
+  final String? quoteId;
+  final int? amountCents;
+  final String requesterType;
+  final String serviceType;
 }

@@ -388,7 +388,7 @@ class _ActiveTripScreenState extends State<ActiveTripScreen>
                               ),
                             ),
                             Text(
-                              formatBrl(widget.quote.price),
+                              formatBrlCents(widget.quote.amountCents),
                               key: const Key('active_trip_price'),
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w800,

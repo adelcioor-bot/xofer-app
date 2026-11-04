@@ -1,37 +1,23 @@
-import 'package:latlong2/latlong.dart';
-import 'package:xofer/features/places/domain/place.dart';
-
 class RideQuote {
-  const RideQuote({required this.distanceKm, required this.price});
+  const RideQuote({
+    required this.id,
+    required this.amountCents,
+    required this.expiresAt,
+  });
 
-  final double distanceKm;
-  final double price;
+  final String id;
+  final int amountCents;
+  final DateTime expiresAt;
 
-  static const baseFare = 6.90;
-  static const pricePerKm = 2.70;
-  static const minimumFare = 12.0;
+  double get price => amountCents / 100;
 
-  factory RideQuote.between(Place origin, Place destination) {
-    const distance = Distance();
-    final kilometers = distance.as(
-      LengthUnit.Kilometer,
-      LatLng(origin.latitude, origin.longitude),
-      LatLng(destination.latitude, destination.longitude),
-    );
-    final raw = baseFare + kilometers * pricePerKm;
-    final charged = raw < minimumFare ? minimumFare : raw;
-    return RideQuote(
-      distanceKm: kilometers,
-      price: (charged * 100).round() / 100,
-    );
-  }
+  bool isExpiredAt(DateTime now) => !expiresAt.isAfter(now);
 }
 
-String formatBrl(double value) {
-  final negative = value < 0;
-  final fixed = value.abs().toStringAsFixed(2);
-  final parts = fixed.split('.');
-  final whole = parts[0];
+String formatBrlCents(int cents) {
+  final negative = cents < 0;
+  final absoluteCents = cents.abs();
+  final whole = (absoluteCents ~/ 100).toString();
   final buffer = StringBuffer();
   for (var i = 0; i < whole.length; i++) {
     final remaining = whole.length - i;
@@ -39,15 +25,18 @@ String formatBrl(double value) {
     buffer.write(whole[i]);
   }
   final sign = negative ? '-' : '';
-  return '${sign}R\$ $buffer,${parts[1]}';
+  final remainder = (absoluteCents % 100).toString().padLeft(2, '0');
+  return '${sign}R\$ $buffer,$remainder';
 }
+
+String formatBrl(double value) => formatBrlCents((value * 100).round());
 
 String formatKilometers(double kilometers) {
   return '${kilometers.toStringAsFixed(1).replaceAll('.', ',')} km';
 }
 
 String pixCopyPaste(RideQuote quote) {
-  final cents = (quote.price * 100).round().toString().padLeft(4, '0');
+  final cents = quote.amountCents.toString().padLeft(4, '0');
   return '00020126580014br.gov.bcb.pix0136xofer@teste.xofer540$cents'
       '5802BR6304XOFR';
 }

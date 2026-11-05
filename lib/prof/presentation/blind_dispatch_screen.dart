@@ -25,6 +25,7 @@ class BlindDispatchScreen extends StatefulWidget {
     required this.onSignOut,
     this.dispatchRepository,
     this.documentCapture,
+    this.now,
   });
 
   final PartnerRole role;
@@ -34,6 +35,7 @@ class BlindDispatchScreen extends StatefulWidget {
   final DispatchRepository? dispatchRepository;
   final Future<void> Function() onSignOut;
   final DocumentCapture? documentCapture;
+  final DateTime Function()? now;
 
   @override
   State<BlindDispatchScreen> createState() => _BlindDispatchScreenState();
@@ -133,6 +135,8 @@ class _BlindDispatchScreenState extends State<BlindDispatchScreen> {
       barrierDismissible: false,
       builder: (context) => BlindMissionDialog(
         attempt: attempt,
+        idleBalanceAtRisk: widget.role == PartnerRole.driver,
+        now: widget.now,
         onRespond: (response) => _dispatchRepository.respondToMission(
           attemptId: attempt.id,
           providerId: widget.partnerId,
@@ -141,7 +145,13 @@ class _BlindDispatchScreenState extends State<BlindDispatchScreen> {
       ),
     );
     _dialogOpen = false;
-    if (!mounted || response?.status != 'accepted') return;
+    if (!mounted) return;
+    if (response?.status == 'expired' &&
+        widget.role == PartnerRole.driver) {
+      _showIdleResetNotice();
+      return;
+    }
+    if (response?.status != 'accepted') return;
     final rideId = response?.rideId;
     if (rideId == null) {
       _showError('A missão foi aceita, mas não foi possível abrir a corrida.');
@@ -280,6 +290,19 @@ class _BlindDispatchScreenState extends State<BlindDispatchScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _showIdleResetNotice() {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(
+            'O saldo de espera foi zerado por inatividade.',
+            key: Key('idle_reset_snackbar'),
+          ),
+        ),
+      );
+  }
+
   Future<void> _retryConnection() async {
     await _attemptSubscription?.cancel();
     if (!mounted) return;
@@ -392,43 +415,59 @@ class BlindMissionDialog extends StatefulWidget {
     super.key,
     required this.attempt,
     required this.onRespond,
+    this.idleBalanceAtRisk = false,
     this.now,
   });
 
+  static const offerSeconds = 45;
+  static const graceSeconds = 15;
+  static const idleWarning =
+      'Atenção: Recusar ou ignorar este chamado zerará o saldo acumulado nesta janela de espera.';
+
   final DispatchAttempt attempt;
   final Future<MissionResponse> Function(String response) onRespond;
+  final bool idleBalanceAtRisk;
   final DateTime Function()? now;
 
   @override
   State<BlindMissionDialog> createState() => _BlindMissionDialogState();
 }
 
-class _BlindMissionDialogState extends State<BlindMissionDialog> {
+class _BlindMissionDialogState extends State<BlindMissionDialog>
+    with SingleTickerProviderStateMixin {
   Timer? _timer;
+  late final AnimationController _pulse;
   String? _respondingTo;
   String? _errorMessage;
   int _remainingSeconds = 0;
+  bool _closed = false;
 
   bool get _responding => _respondingTo != null;
+
+  bool get _inNetworkGrace =>
+      _remainingSeconds <= BlindMissionDialog.graceSeconds;
 
   DateTime get _now => widget.now?.call() ?? DateTime.now();
 
   @override
   void initState() {
     super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..repeat(reverse: true);
     _updateCountdown();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
+      if (!mounted || _closed) return;
       setState(_updateCountdown);
-      if (_remainingSeconds == 0 && !_responding) {
-        Navigator.of(context).pop();
-      }
+      if (_remainingSeconds == 0 && !_responding) _closeAsExpired();
     });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _pulse.dispose();
     super.dispose();
   }
 
@@ -437,7 +476,16 @@ class _BlindMissionDialogState extends State<BlindMissionDialog> {
         .difference(_now)
         .inMilliseconds;
     final seconds = (milliseconds / 1000).ceil();
-    _remainingSeconds = math.min(30, math.max(0, seconds));
+    _remainingSeconds = math.min(
+      BlindMissionDialog.offerSeconds,
+      math.max(0, seconds),
+    );
+  }
+
+  void _closeAsExpired() {
+    if (_closed || !mounted) return;
+    _closed = true;
+    Navigator.of(context).pop(const MissionResponse(status: 'expired'));
   }
 
   Future<void> _respond(String response) async {
@@ -461,22 +509,35 @@ class _BlindMissionDialogState extends State<BlindMissionDialog> {
               : 'Não foi possível responder. Tente novamente.';
         });
       } else {
-        Navigator.of(context).pop();
+        _closeAsExpired();
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final progress = _remainingSeconds / 30;
+    final progress = _remainingSeconds / BlindMissionDialog.offerSeconds;
     return PopScope(
       canPop: false,
       child: AlertDialog(
         key: const Key('blind_mission_dialog'),
-        title: const Text(
-          'Nova Missão Disponível!',
-          key: Key('blind_mission_title'),
-          textAlign: TextAlign.center,
+        title: AnimatedBuilder(
+          animation: _pulse,
+          builder: (context, _) {
+            final emphasis = _inNetworkGrace
+                ? Colors.redAccent.withValues(
+                    alpha: 0.45 + (0.55 * _pulse.value),
+                  )
+                : null;
+            return Text(
+              'Novo Chamado Disponível',
+              key: const Key('blind_mission_title'),
+              textAlign: TextAlign.center,
+              style: emphasis == null
+                  ? null
+                  : TextStyle(color: emphasis, fontWeight: FontWeight.w700),
+            );
+          },
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -484,22 +545,51 @@ class _BlindMissionDialogState extends State<BlindMissionDialog> {
             SizedBox(
               width: 88,
               height: 88,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    value: progress,
-                    strokeWidth: 7,
-                    color: AppTheme.amber,
-                  ),
-                  Text(
-                    '$_remainingSeconds',
-                    key: const Key('blind_mission_countdown'),
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                ],
+              child: AnimatedBuilder(
+                animation: _pulse,
+                builder: (context, _) {
+                  final color = _inNetworkGrace
+                      ? Colors.redAccent.withValues(
+                          alpha: 0.45 + (0.55 * _pulse.value),
+                        )
+                      : AppTheme.amber;
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        key: const Key('blind_mission_timer'),
+                        value: progress,
+                        strokeWidth: 7,
+                        color: color,
+                      ),
+                      Text(
+                        '$_remainingSeconds',
+                        key: const Key('blind_mission_countdown'),
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              color: _inNetworkGrace ? color : null,
+                              fontWeight: _inNetworkGrace
+                                  ? FontWeight.w700
+                                  : null,
+                            ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
+            if (widget.idleBalanceAtRisk) ...[
+              const SizedBox(height: 16),
+              const Text(
+                BlindMissionDialog.idleWarning,
+                key: Key('idle_reset_warning'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
             if (_errorMessage != null) ...[
               const SizedBox(height: 16),
               Text(

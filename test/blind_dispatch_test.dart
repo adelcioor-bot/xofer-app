@@ -112,7 +112,12 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('Nova Missão Disponível!'), findsOneWidget);
+    expect(find.text('Novo Chamado Disponível'), findsOneWidget);
+    expect(find.text(BlindMissionDialog.idleWarning), findsOneWidget);
+    final timer = tester.widget<CircularProgressIndicator>(
+      find.byKey(const Key('blind_mission_timer')),
+    );
+    expect(timer.color, AppTheme.amber);
     expect(find.text('Aceitar'), findsOneWidget);
     expect(find.text('Recusar'), findsOneWidget);
     expect(find.textContaining('Origem confidencial'), findsNothing);
@@ -258,7 +263,12 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('Nova Missão Disponível!'), findsOneWidget);
+    expect(find.text('Novo Chamado Disponível'), findsOneWidget);
+    expect(find.text(BlindMissionDialog.idleWarning), findsNothing);
+    final timer = tester.widget<CircularProgressIndicator>(
+      find.byKey(const Key('blind_mission_timer')),
+    );
+    expect(timer.color, AppTheme.amber);
     expect(find.text('Aceitar'), findsOneWidget);
     expect(find.text('Recusar'), findsOneWidget);
     expect(find.textContaining('Origem confidencial'), findsNothing);
@@ -273,5 +283,80 @@ void main() {
       find.byType(ActiveRescueScreen),
     );
     expect(activeScreen.role, PartnerRole.courier);
+  });
+
+  testWidgets('os 15 segundos finais ficam vermelhos', (tester) async {
+    final repository = _DispatchRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkTheme,
+        home: BlindDispatchScreen(
+          partnerId: 'driver-1',
+          locationRepository: _Location(),
+          corridaRepository: null,
+          dispatchRepository: repository,
+          onSignOut: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    repository.attempts.add(
+      DispatchAttempt(
+        id: 'attempt-grace',
+        providerRole: 'driver',
+        status: 'offered',
+        expiresAt: DateTime.now().add(const Duration(seconds: 15)),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final timer = tester.widget<CircularProgressIndicator>(
+      find.byKey(const Key('blind_mission_timer')),
+    );
+    expect((timer.color!.a * 255).round(), isNot(255));
+    expect(timer.color!.r, greaterThan(timer.color!.g));
+    expect(find.text(BlindMissionDialog.idleWarning), findsOneWidget);
+  });
+
+  testWidgets('inatividade fecha o chamado e avisa que o saldo zerou', (
+    tester,
+  ) async {
+    final repository = _DispatchRepository();
+    final openedAt = DateTime.now();
+    var clock = openedAt;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkTheme,
+        home: BlindDispatchScreen(
+          partnerId: 'driver-1',
+          locationRepository: _Location(),
+          corridaRepository: null,
+          dispatchRepository: repository,
+          onSignOut: () async {},
+          now: () => clock,
+        ),
+      ),
+    );
+    await tester.pump();
+    repository.attempts.add(
+      DispatchAttempt(
+        id: 'attempt-timeout',
+        providerRole: 'driver',
+        status: 'offered',
+        expiresAt: openedAt.add(const Duration(seconds: 1)),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    clock = openedAt.add(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.byKey(const Key('blind_mission_dialog')), findsNothing);
+    expect(
+      find.text('O saldo de espera foi zerado por inatividade.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('blind_dispatch_screen')), findsOneWidget);
   });
 }

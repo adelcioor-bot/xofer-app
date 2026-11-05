@@ -75,6 +75,22 @@ async function refundPayment(paymentId: string): Promise<void> {
   });
 }
 
+function optionalQuoteInt(
+  body: Record<string, unknown>,
+  key: string,
+  max: number,
+): number | null {
+  const value = body[key];
+  if (value == null) return null;
+  if (
+    typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 ||
+    value > max
+  ) {
+    throw new HttpError(400, `Valor inválido para a cotação: ${key}.`);
+  }
+  return value;
+}
+
 async function generateQuote(
   request: Request,
   userId: string,
@@ -82,6 +98,13 @@ async function generateQuote(
   originLng: number,
   destinationLat: number,
   destinationLng: number,
+  route: {
+    driverDurationInTrafficSeconds: number | null;
+    driverDurationSeconds: number | null;
+    courierDurationInTrafficSeconds: number | null;
+    courierDurationSeconds: number | null;
+    courierDistanceMeters: number | null;
+  },
 ): Promise<Quote> {
   const { data, error } = await requestScopedClient(request).rpc(
     "rpc_generate_ride_quote",
@@ -92,15 +115,30 @@ async function generateQuote(
       p_origin_lng: originLng,
       p_dest_lat: destinationLat,
       p_dest_lng: destinationLng,
+      p_driver_duration_in_traffic_seconds:
+        route.driverDurationInTrafficSeconds,
+      p_driver_duration_seconds: route.driverDurationSeconds,
+      p_courier_duration_in_traffic_seconds:
+        route.courierDurationInTrafficSeconds,
+      p_courier_duration_seconds: route.courierDurationSeconds,
+      p_courier_distance_meters: route.courierDistanceMeters,
     },
   );
   if (error) throw error;
   const quote = Array.isArray(data) ? data[0] : null;
+  const total = isRecord(quote) ? quote.total_fare_cents : null;
+  const base = isRecord(quote) ? quote.base_fare_cents : null;
+  const surcharge = isRecord(quote) ? quote.surcharge_cents : null;
   if (
     !isRecord(quote) || typeof quote.quote_id !== "string" ||
     typeof quote.amount_cents !== "number" ||
     !Number.isSafeInteger(quote.amount_cents) ||
-    typeof quote.expires_at !== "string"
+    typeof quote.expires_at !== "string" ||
+    typeof total !== "number" || !Number.isSafeInteger(total) ||
+    typeof base !== "number" || !Number.isSafeInteger(base) || base < 0 ||
+    typeof surcharge !== "number" || !Number.isSafeInteger(surcharge) ||
+    surcharge < 0 || total !== quote.amount_cents ||
+    base + surcharge !== total
   ) {
     throw new HttpError(502, "A cotação retornou dados inválidos.");
   }
@@ -319,6 +357,33 @@ Deno.serve(async (request: Request) => {
         originLng,
         destinationLat,
         destinationLng,
+        {
+          driverDurationInTrafficSeconds: optionalQuoteInt(
+            body,
+            "driver_duration_in_traffic_seconds",
+            86400,
+          ),
+          driverDurationSeconds: optionalQuoteInt(
+            body,
+            "driver_duration_seconds",
+            86400,
+          ),
+          courierDurationInTrafficSeconds: optionalQuoteInt(
+            body,
+            "courier_duration_in_traffic_seconds",
+            86400,
+          ),
+          courierDurationSeconds: optionalQuoteInt(
+            body,
+            "courier_duration_seconds",
+            86400,
+          ),
+          courierDistanceMeters: optionalQuoteInt(
+            body,
+            "courier_distance_meters",
+            500000,
+          ),
+        },
       );
       quoteId = quote.quote_id;
       amountCents = quote.amount_cents;

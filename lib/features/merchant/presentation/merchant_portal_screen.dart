@@ -788,7 +788,7 @@ class _MerchantDashboardScreenState extends State<_MerchantDashboardScreen> {
                   key: const Key('merchant_new_rescue'),
                   onPressed: widget.onCreateRescue,
                   icon: const Icon(Icons.car_crash_outlined),
-                  label: const Text('Solicitar resgate'),
+                  label: const Text('Solicitar Xofer'),
                 ),
                 const SizedBox(height: 24),
                 Text(
